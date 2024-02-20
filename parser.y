@@ -78,19 +78,6 @@
         strcpy(temp->id, ident);
         return temp;
     };
-    /*
-    void destroyNode(struct node* root) {
-        if (root == nullptr) { return; }
-        // Recursively free left, middle, and right subtrees
-        destroyNode(root->left);
-        destroyNode(root->middle);
-        destroyNode(root->right);
-        // Free allocated memory for id and op
-        if (root->id != nullptr) { free(root->id); }
-        if (root->op != nullptr) { free(root->op); }
-        free(root);
-    }
-    */
     int id = 262144; // 2 ** 18
     int evaluate(struct node *t, bool return_var_id = false) {
         if (t->op == NULL) {
@@ -103,34 +90,37 @@
                 return var_map[var_str_map[t->id]];
             }
         } else {
+            struct node* left = t->left;
+            struct node* middle = t->middle;
+            struct node* right = t->right;
             switch (*(t->op)) {
                 // Arithmetic
-                case '+': return evaluate(t->left) + evaluate(t->right); break; // Addition
-                case '-': return evaluate(t->left) - evaluate(t->right); break; // Subtraction
-                case '*': return evaluate(t->left) * evaluate(t->right); break; // Multiplication
-                case '/': return evaluate(t->left) / evaluate(t->right); break; // Division
-                case '%': return evaluate(t->left) % evaluate(t->right); break; // Modulus
-                case '<': return evaluate(t->left) < evaluate(t->right); break;
-                case '>': return evaluate(t->left) > evaluate(t->right); break;
-                case '^': return pow(evaluate(t->left), evaluate(t->right)); break;
-                case '?': return (evaluate(t->left) == 1) ? evaluate(t->middle) : evaluate(t->right); break;
+                case '+': return evaluate(left) + evaluate(right); break; // Addition
+                case '-': return evaluate(left) - evaluate(right); break; // Subtraction
+                case '*': return evaluate(left) * evaluate(right); break; // Multiplication
+                case '/': return evaluate(left) / evaluate(right); break; // Division
+                case '%': return evaluate(left) % evaluate(right); break; // Modulus
+                case '<': return evaluate(left) < evaluate(right); break;
+                case '>': return evaluate(left) > evaluate(right); break;
+                case '^': return pow(evaluate(left), evaluate(right)); break;
+                case '?': return (evaluate(left) == 1) ? evaluate(middle) : evaluate(right); break;
                 // Conditionals
-                case 'e': return evaluate(t->left) == evaluate(t->right); break;
-                case 'n': return evaluate(t->left) == evaluate(t->right); break;
-                case 'l': return evaluate(t->left) <= evaluate(t->right); break;
-                case 'g': return evaluate(t->left) >= evaluate(t->right); break;
+                case 'e': return evaluate(left) == evaluate(right); break;
+                case 'n': return evaluate(left) == evaluate(right); break;
+                case 'l': return evaluate(left) <= evaluate(right); break;
+                case 'g': return evaluate(left) >= evaluate(right); break;
                 // Variables
                 case '=': {
-                    int total = evaluate(t->left, true);
-                    int value = evaluate(t->right, true);
+                    int total = evaluate(left, true);
+                    int value = evaluate(right, true);
                     if (total == 0) {
-                        const char* ident = t->left->id;
+                        const char* ident = left->id;
                         var_int_map[id] = std::string(ident);
                         var_str_map[ident] = id;
                         var_map[id] = value;
                         id++;
                     } else {
-                        if (is_func_map[total] == true) { yyerror("Function pointer can not be altered."); }
+                        if (is_func_map[total] == true) { yyerror("Function pointer cant be altered."); }
                         else { var_map[total] = value; }
                     }
                     return 0;
@@ -138,19 +128,17 @@
                 }
                 // Functions
                 case 'f': {
-                    int total = evaluate(t->left, true);
+                    int total = evaluate(left, true);
                     if (total == 0) {
-                        const char* ident = t->left->id;
+                        const char* ident = left->id;
                         var_int_map[id] = std::string(ident);
                         var_str_map[ident] = id;
                         var_map[id] = id;
                         is_func_map[id] = true;
-                        // =================
                         struct function f;
-                        f.parameters.push_back(t->middle != NULL ? t->middle->id : " ");
-                        f.nodes = t->right;
+                        f.parameters.push_back(middle != NULL ? middle->id : " ");
+                        f.nodes = right;
                         var_func_map[id] = f;
-                        // =================
                         id++;
                     } else {
                         yyerror("Function was redefined.");
@@ -159,9 +147,9 @@
                     break;
                 }
                 case 'c': {
-                    const std::map<int, int> var_map_copy = var_map;
-                    struct function localcopy = var_func_map[var_str_map[t->left->id]];
-                    if (t->right != NULL) {
+                    const std::map<int, int> var_map_copy = var_map; // Does not cause the slow.
+                    struct function localcopy = var_func_map[var_str_map[left->id]];
+                    if (right != NULL) {
                         // Currently this will only work for one paramter.
                         if (localcopy.parameters.front() == " ") {
                             char *string = (char*)malloc(50);
@@ -169,8 +157,7 @@
                             yyerror(string);
                             free(string);
                         } else {
-                            // printf("Testing \"%s\"", localcopy.parameters.front().c_str());
-                            var_map[var_str_map[localcopy.parameters.front()]] = evaluate(t->right); 
+                            var_map[var_str_map[localcopy.parameters.front()]] = evaluate(right); 
                         }
                     }
                     int c = evaluate(localcopy.nodes);

@@ -1,8 +1,14 @@
 all: build clean
 
-run:
-	./a.out
+# nohup cat file.loq | ./a.out &
+# pid=$(pgrep -f "a.out")
+# rss=$(ps -o rss -p $pid | awk 'NR>1')
+# echo "Memory Usage: ${rss} KB"
 
+run:
+	time cat file.loq | ./a.out
+
+# Without -O3, It will be very slow.
 build: lex.yy.c y.tab.c
 	g++ -g -O3 lex.yy.c y.tab.c `llvm-config --cxxflags` -ferror-limit=100
 
