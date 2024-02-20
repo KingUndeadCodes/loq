@@ -11,10 +11,13 @@
     #include <stdio.h>
     extern int yylineno;
     extern char *yytext;
-    extern FILE *yyin;       
+    extern FILE *yyin;
     int yylex();
     // https://silcnitc.github.io/ywl.html
-    void yyerror(const char *msg) { fprintf(stderr, "Error <line: %d>: %s\n", yylineno, msg); }
+    // https://stackoverflow.com/questions/780676/string-input-to-flex-lexer
+    void yyerror(const char *msg) { fprintf(stderr, "[\033[1;37mParser\033[0m] \033[1;31mError\033[0m <line: %d>: %s\n", yylineno, msg); exit(1); }
+    void yywarn(const char *msg) { fprintf(stderr, "[\033[1;37mParser\033[0m] \033[1;33mWarning\033[0m <line: %d>: %s\n", yylineno, msg); }
+    void yynote(const char *msg) { fprintf(stderr, "[\033[1;37mParser\033[0m] \033[1;33mNote\033[0m <line: %d>: %s\n", yylineno, msg); }
     struct node {
         int32_t value;
         char* id;
@@ -100,15 +103,14 @@
                 case '*': return evaluate(left) * evaluate(right); break; // Multiplication
                 case '/': return evaluate(left) / evaluate(right); break; // Division
                 case '%': return evaluate(left) % evaluate(right); break; // Modulus
-                case '<': return evaluate(left) < evaluate(right); break;
-                case '>': return evaluate(left) > evaluate(right); break;
-                case '^': return pow(evaluate(left), evaluate(right)); break;
-                case '?': return (evaluate(left) == 1) ? evaluate(middle) : evaluate(right); break;
-                // Conditionals
-                case 'e': return evaluate(left) == evaluate(right); break;
-                case 'n': return evaluate(left) == evaluate(right); break;
-                case 'l': return evaluate(left) <= evaluate(right); break;
-                case 'g': return evaluate(left) >= evaluate(right); break;
+                case '^': return pow(evaluate(left), evaluate(right)); break; // Power
+                case '?': return (evaluate(left) == 1) ? evaluate(middle) : evaluate(right); break; // Ternary
+                case '>': return evaluate(left) > evaluate(right); break; // Greater
+                case '<': return evaluate(left) < evaluate(right); break; // Less
+                case 'e': return evaluate(left) == evaluate(right); break; // Equal
+                case 'n': return evaluate(left) != evaluate(right); break; // Not Equal
+                case 'g': return evaluate(left) >= evaluate(right); break; // Greater or Equal 
+                case 'l': return evaluate(left) <= evaluate(right); break; // Less or Equal
                 // Variables
                 case '=': {
                     int total = evaluate(left, true);
@@ -135,6 +137,10 @@
                         var_str_map[ident] = id;
                         var_map[id] = id;
                         is_func_map[id] = true;
+                        if (strcmp(middle->id, ident) == 0) {
+                            // Otherwise, the ID will be returned rather than the function being ran.
+                            yyerror("Function name and parameter name cannot be the same."); 
+                        }
                         struct function f;
                         f.parameters.push_back(middle != NULL ? middle->id : " ");
                         f.nodes = right;
@@ -147,13 +153,14 @@
                     break;
                 }
                 case 'c': {
-                    const std::map<int, int> var_map_copy = var_map; // Does not cause the slow.
+                    const std::map<int, int> var_map_copy(var_map); // Does not cause the slow.
                     struct function localcopy = var_func_map[var_str_map[left->id]];
                     if (right != NULL) {
                         // Currently this will only work for one paramter.
                         if (localcopy.parameters.front() == " ") {
                             char *string = (char*)malloc(50);
-                            sprintf(string, "Argument Overflow. Expected %d.", 1);
+                            // sprintf(string, "Argument Overflow. Expected %d.", 1);
+                            snprintf(string, 50, "Argument Overflow. Expected %d.", 1);
                             yyerror(string);
                             free(string);
                         } else {
@@ -163,7 +170,7 @@
                     int c = evaluate(localcopy.nodes);
                     var_map = var_map_copy;
                     return c;
-                    break;
+                    // break;
                 }
             }
         }
@@ -199,11 +206,11 @@
 
 %%
 
-line :
-    | exp ';'                       {;}
+line : 
+    | exp ';'                       {/* printf("[Unused] \033[0;33m%d\033[0m\n", evaluate($1)); */ ;}
     | assignment ';'                {evaluate($1);}
     | print exp ';'                 {printf("\033[0;33m%d\033[0m\n", evaluate($2));}
-    | line exp ';'                  {;}
+    | line exp ';'                  {/* printf("[Unused] \033[0;33m%d\033[0m\n", evaluate($2)); */ ;}
     | line assignment ';'           {evaluate($2);}
     | line print exp ';'            {printf("\033[0;33m%d\033[0m\n", evaluate($3));}
     ;
@@ -245,7 +252,7 @@ term : Number { $$ = $1; }
     ;
 %%
 
-int main(void) {
+int main(int argc, char **argv) {
     // printf("loq %s (%s, %s, %s) [%s]\n", "0.0.1", "dev", __DATE__, __TIME__, __VERSION__);
     yyparse();
     return 0;
