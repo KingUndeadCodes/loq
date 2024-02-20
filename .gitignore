@@ -1,0 +1,9 @@
+# Directories
+models
+.vscode
+old
+
+# Files
+file.loq
+main.sh
+a.out
