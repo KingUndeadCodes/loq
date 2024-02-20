@@ -1,6 +1,11 @@
 // Functions
 fibbanoci(x) = (x == 0) ? 0 : (x <= 2) ? 1 : fibbanoci(x - 1) + fibbanoci(x - 2);
-// factorial(x) = ((x == 0) ? 1 : (x) * factorial(x - 1));
+// factorial(x) = (x == 0) ? 1 : (x) * factorial(x - 1);
 
+// Invocation of fibbanoci
+print fibbanoci(1);
+print fibbanoci(2);
+print fibbanoci(4);
+print fibbanoci(8);
+print fibbanoci(16);
 print fibbanoci(32);
-// print factorial(12);
