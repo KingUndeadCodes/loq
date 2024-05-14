@@ -1,0 +1,14 @@
+define fibbanoci(x) {
+    if (x == 0) return 0
+    else {
+        if (x <= 2) return 1
+        else return fibbanoci(x - 1) + fibbanoci(x - 2)
+    }
+}
+
+fibbanoci(1)
+fibbanoci(2)
+fibbanoci(4)
+fibbanoci(8)
+fibbanoci(16)
+fibbanoci(32)

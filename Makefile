@@ -8,9 +8,11 @@ all: build clean
 run:
 	time cat file.loq | ./a.out
 
+test: run
+
 # Without -O3, It will be very slow.
 build: lex.yy.c y.tab.c
-	g++ -g -O3 lex.yy.c y.tab.c `llvm-config --cxxflags` -ferror-limit=100
+	g++ -g -O3 lex.yy.c y.tab.c -ferror-limit=100
 
 lex.yy.c: y.tab.c lexer.l
 	lex lexer.l

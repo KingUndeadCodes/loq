@@ -3,6 +3,7 @@
     #include <map>
     #include <vector>
     #include <string>
+    #include <algorithm>
     #include <math.h>
     #include <cstdlib>
     #include <stdlib.h>
@@ -13,8 +14,10 @@
     extern char *yytext;
     extern FILE *yyin;
     int yylex();
+    // Basically `bc` but based.
     // https://silcnitc.github.io/ywl.html
     // https://stackoverflow.com/questions/780676/string-input-to-flex-lexer
+    // https://www.quut.com/c/ANSI-C-grammar-l.html
     void yyerror(const char *msg) { fprintf(stderr, "[\033[1;37mParser\033[0m] \033[1;31mError\033[0m <line: %d>: %s\n", yylineno, msg); exit(1); }
     void yywarn(const char *msg) { fprintf(stderr, "[\033[1;37mParser\033[0m] \033[1;33mWarning\033[0m <line: %d>: %s\n", yylineno, msg); }
     void yynote(const char *msg) { fprintf(stderr, "[\033[1;37mParser\033[0m] \033[1;33mNote\033[0m <line: %d>: %s\n", yylineno, msg); }
@@ -31,11 +34,11 @@
         struct node* nodes;
     };
     /* static std::map<int, std::vector<std::string> > func_map; */
-    static std::map<int, bool> is_func_map;
     static std::map<int, int> var_map;
-    static std::map<int, std::string> var_int_map; // Just to hold the name
-    static std::map<std::string, int> var_str_map; // Reverse of `var_int_map`
-    static std::map<int, struct function> var_func_map;
+    static std::unordered_map<int, bool> is_func_map;
+    static std::unordered_map<int, std::string> var_int_map; // Just to hold the name
+    static std::unordered_map<std::string, int> var_str_map; // Reverse of `var_int_map`
+    static std::unordered_map<int, struct function> var_func_map;
     struct node* makeOperatorNodeAdvanced(char c, struct node *l, struct node *m, struct node *r) {
         struct node *temp;
         temp = (struct node*)malloc(sizeof(struct node));
@@ -137,12 +140,21 @@
                         var_str_map[ident] = id;
                         var_map[id] = id;
                         is_func_map[id] = true;
-                        if (strcmp(middle->id, ident) == 0) {
-                            // Otherwise, the ID will be returned rather than the function being ran.
-                            yyerror("Function name and parameter name cannot be the same."); 
+                        /*
+                        if (middle != NULL) {
+                            if (strcmp(middle->id, ident) == 0) {
+                                // Otherwise, the ID will be returned rather than the function being ran.
+                                yyerror("Function name and parameter name cannot be the same."); 
+                            }
                         }
+                        */
                         struct function f;
-                        f.parameters.push_back(middle != NULL ? middle->id : " ");
+                        if (middle != NULL) {
+                            if (*(middle->op) == 'p') {
+                                for (struct node* temp = middle; temp != NULL; temp = temp->left) f.parameters.push_back(temp->middle->id);
+                            }
+                        } else { f.parameters.push_back(" "); }
+                        // printf("%s", "Hello, World!\n");
                         f.nodes = right;
                         var_func_map[id] = f;
                         id++;
@@ -153,28 +165,134 @@
                     break;
                 }
                 case 'c': {
+                    // NOTE: Parametrs need to pre-reserved.
                     const std::map<int, int> var_map_copy(var_map); // Does not cause the slow.
                     struct function localcopy = var_func_map[var_str_map[left->id]];
-                    if (right != NULL) {
-                        // Currently this will only work for one paramter.
-                        if (localcopy.parameters.front() == " ") {
+                    if (right != NULL) { // && *(right->op) == 'v'
+                        std::vector<std::string> parameters = localcopy.parameters;
+                        const int parameter_count = parameters.size();
+                        std::reverse(parameters.begin(), parameters.end());
+                        int value_count = 0;
+                        for (struct node* temp = right; temp != NULL; temp = temp->left) value_count++;
+                        if (value_count > parameter_count) {
                             char *string = (char*)malloc(50);
-                            // sprintf(string, "Argument Overflow. Expected %d.", 1);
-                            snprintf(string, 50, "Argument Overflow. Expected %d.", 1);
+                            snprintf(string, 50, "Argument Overflow. Expected %d, Got %d.", parameter_count, value_count);
+                            yyerror(string);
+                            free(string);
+                        } else if (value_count < parameter_count) {
+                            char *string = (char*)malloc(50);
+                            snprintf(string, 50, "Argument Underflow. Expected %d, Got %d.", parameter_count, value_count);
                             yyerror(string);
                             free(string);
                         } else {
-                            var_map[var_str_map[localcopy.parameters.front()]] = evaluate(right); 
+                            int count = 0;
+                            for (struct node* temp = right; temp != NULL; temp = temp->left) { 
+                                var_map[var_str_map[parameters[count]]] = evaluate(temp->middle);
+                                printf("%d\n", var_map[var_str_map[parameters[count]]]);
+                                count++;
+                            }
                         }
                     }
+                    printf("Breakpoint 1");
                     int c = evaluate(localcopy.nodes);
+                    printf("Breakpoint 2");
                     var_map = var_map_copy;
+                    // var_int_map = var_int_map_copy;
+                    // var_str_map = var_str_map_copy;
+                    // id = duplicateID;
                     return c;
-                    // break;
                 }
             }
         }
         return 0;
+    }
+    struct ParameterVector { std::vector<struct node> nodes; };
+    struct ValueVector { std::vector<struct node> values; };
+    struct ValueVector* CreateValueVector(void) {
+        struct ValueVector *temp;
+        temp = (struct ValueVector*)malloc(sizeof(struct ValueVector));
+        return temp;
+    }
+    struct ValueVector* AddValueVector(struct ValueVector* Vector, struct node* value) {
+        Vector->values.push_back(*value);
+        return Vector;
+    }
+    struct node* ConvertValueVectorToNode(struct ValueVector* Vector) {
+        struct node* head = NULL;
+        for (auto itr : Vector->values) {
+            printf(">>> %d\n", itr.value);
+            if (head == NULL) {
+                struct node* temp = (struct node*)malloc(sizeof(struct node));
+                temp->op = (char*)malloc(sizeof(char));
+                temp->left = NULL;
+                temp->middle = makeOperatorNodeAdvanced(*(itr.op), itr.left, itr.middle, itr.right); // *(itr.op) is the issue here.
+                printf("$$$ %d %c %d %d\n", 0, evaluate(itr.left), *(itr.op), evaluate(itr.middle), evaluate(itr.right));
+                temp->right = NULL;
+                temp->id = NULL;
+                *(temp->op) = 'v';
+                head = temp;
+                // IDEA! Use `head->value` for a default value.
+            } else {
+                printf("$$$ %d\n", 0);
+                struct node* temp = (struct node*)malloc(sizeof(struct node));
+                temp->op = (char*)malloc(sizeof(char));
+                temp->left = head;
+                temp->middle = makeOperatorNodeAdvanced(*(itr.op), itr.left, itr.middle, itr.right);
+                temp->right = NULL;
+                temp->id = NULL;
+                *(temp->op) = 'v';
+                head->right = temp;
+                head = temp;
+            }
+            printf("||| %d\n", head->middle->value);
+        };
+        // for (struct node* temp = head; temp != NULL; temp = temp->left) {
+        //     printf("%d\n", temp->middle->value);
+        // }
+        return head;
+    }
+    struct ParameterVector* CreateParameterVector(void) {
+        struct ParameterVector *temp;
+        temp = (struct ParameterVector*)malloc(sizeof(struct ParameterVector));
+        return temp;
+    }
+    struct ParameterVector* AddParameterVector(struct ParameterVector* Vector, struct node* node) {
+        Vector->nodes.push_back(*node);
+        return Vector;
+    }
+    struct node* ConvertParameterVectorToNode(struct ParameterVector* Vector) {
+        struct node* head = NULL;
+        for (auto itr : Vector->nodes) {
+            if (head == NULL) {
+                struct node* temp = (struct node*)malloc(sizeof(struct node));
+                temp->op = (char*)malloc(sizeof(char));
+                temp->left = NULL;
+                temp->middle = makeLeafNodeIdentifier(itr.id);
+                temp->right = NULL;
+                temp->id = NULL;
+                *(temp->op) = 'p';
+                head = temp;
+                // IDEA! Use `head->value` for a default value.
+            } else {
+                struct node* temp = (struct node*)malloc(sizeof(struct node));
+                temp->op = (char*)malloc(sizeof(char));
+                temp->left = head;
+                temp->middle = makeLeafNodeIdentifier(itr.id);
+                temp->right = NULL;
+                temp->id = NULL;
+                *(temp->op) = 'p';
+                head->right = temp;
+                head = temp;
+            }
+            // printf("%s\n", itr.id);
+            // printf("%s\n", head->middle->id);
+        };
+        /*
+        for (struct node* temp = head; temp != NULL; temp = temp->left) {
+            printf("%s\n", (const char*)temp->middle->id);
+        }
+        */
+        return head;
     }
     // =================================
     // struct Range {int min; int max;};
@@ -183,7 +301,7 @@
     // https://stackoverflow.com/questions/6636808/repl-for-interpreter-using-flex-bison
 %}
 
-%union { int num; char* id; struct node* node; /* struct StringVector* str_vector; */ }
+%union { int num; char* id; struct node* node; struct ParameterVector* str_vector; struct ValueVector* value_vector; }
 %start line
 %token EQU
 %token NEQ
@@ -196,7 +314,8 @@
 %type <node> ident
 %type <node> assignment
 %type <node> exp
-// %type <str_vector> params
+%type <str_vector> params
+%type <value_vector> values
 
 %left '+' '-'
 %left '*' '/' '%'
@@ -217,13 +336,33 @@ line :
 
 ident: Identifier { $$ = makeLeafNodeIdentifier($1); }
 
-// params: Identifier { $$ = create_string_vector($1); }
-//     | params ',' Identifier { $$ = extend_string_vector($1, $3); }
+params : ident { 
+        struct ParameterVector* String = CreateParameterVector();
+        AddParameterVector(String, $1);
+        $$ = String;
+    }
+    | params ',' ident {
+        struct ParameterVector* String = $1; 
+        AddParameterVector(String, $3);
+        $$ = String;
+    }
+
+values : exp {
+        struct ValueVector* Value = CreateValueVector();
+        // printf("%d\n", evaluate($1));
+        AddValueVector(Value, $1); // Using `evaluate` is kind of nasty work-around.
+        $$ = Value;
+    }
+    | values ',' exp {
+        struct ValueVector* Value = $1; 
+        AddValueVector(Value, $3); // // Using `evaluate` is kind of nasty work-around.
+        $$ = Value;
+    }
 
 assignment : ident '=' exp { $$ = makeOperatorNode('=', $1, $3); }
-    | ident '(' ')' '=' exp { $$ = makeOperatorNode('f', $1, $5); }
-    | ident '(' ident ')' '=' exp { $$ = makeOperatorNodeAdvanced('f', $1, $3, $6); }
-    // | ident '(' params ')' '=' exp { $$ = makeOperatorNode('f', $1, $3, $6); }
+    | ident '(' ')' '=' exp { $$ = makeOperatorNodeAdvanced('f', $1, NULL, $5); }
+    // | ident '(' ident ')' '=' exp { $$ = makeOperatorNodeAdvanced('f', $1, $3, $6); }
+    | ident '(' params ')' '=' exp { $$ = makeOperatorNodeAdvanced('f', $1, ConvertParameterVectorToNode($3), $6); /* (void)ConvertParameterVectorToNode($3); */ }
     ;
 
 exp : ident { $$ = $1; }
@@ -241,7 +380,8 @@ exp : ident { $$ = $1; }
     | exp LET exp { $$ = makeOperatorNode('l', $1, $3); }
     | exp GET exp { $$ = makeOperatorNode('g', $1, $3); }
     | ident '(' ')' { $$ = makeOperatorNode('c', $1, NULL); }
-    | ident '(' exp ')' { $$ = makeOperatorNode('c', $1, $3); }
+    // | ident '(' exp ')' { $$ = makeOperatorNode('c', $1, $3); }
+    | ident '(' values ')' { $$ = makeOperatorNode('c', $1, ConvertValueVectorToNode($3)); }
     | exp '?' exp ':' exp { $$ = makeOperatorNodeAdvanced('?', $1, $3, $5); }
     | '(' exp ')' { $$ = $2; }
     // | '|' exp '|' { $$ = abs($2); }

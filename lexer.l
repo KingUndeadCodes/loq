@@ -2,8 +2,10 @@
 #include "y.tab.h"
 int yylex();
 int line_number = 1;
-// {I}        { yylval.id = strdup(yytext); return Identifier; }
-// "print"    return print;
+// G [α-ωΑ-Ω_][α-ωΑ-Ω0-9_]*
+// C [а-qяА-Я_][а-яА-Я0-9_]*
+// L [a-zA-Z_][a-zA-Z0-9_]*
+// I {G}|{C}|{L}
 %}
 
 %option nounput yylineno
@@ -25,8 +27,8 @@ S \"(\\.|[^"\\])*\"
 ":"        return yytext[0];
 "["        return yytext[0];
 "]"        return yytext[0];
-"{"        return yytext[0];
-"}"        return yytext[0];
+"{"        return yytext[0]; // Remove
+"}"        return yytext[0]; // Remove
 "("        return yytext[0];
 ")"        return yytext[0];
 "+"        return yytext[0];
