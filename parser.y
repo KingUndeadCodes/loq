@@ -165,6 +165,7 @@
                     break;
                 }
                 case 'c': {
+                    // printf("%s", "\tC called\n");
                     // NOTE: Parametrs need to pre-reserved.
                     const std::map<int, int> var_map_copy(var_map); // Does not cause the slow.
                     struct function localcopy = var_func_map[var_str_map[left->id]];
@@ -173,7 +174,9 @@
                         const int parameter_count = parameters.size();
                         std::reverse(parameters.begin(), parameters.end());
                         int value_count = 0;
+                        // printf("%s", right->op);
                         for (struct node* temp = right; temp != NULL; temp = temp->left) value_count++;
+                        // printf("%d\n", value_count);
                         if (value_count > parameter_count) {
                             char *string = (char*)malloc(50);
                             snprintf(string, 50, "Argument Overflow. Expected %d, Got %d.", parameter_count, value_count);
@@ -187,15 +190,19 @@
                         } else {
                             int count = 0;
                             for (struct node* temp = right; temp != NULL; temp = temp->left) { 
-                                var_map[var_str_map[parameters[count]]] = evaluate(temp->middle);
-                                printf("%d\n", var_map[var_str_map[parameters[count]]]);
+                                int _value = evaluate(temp->middle);
+                                // printf("%s = %d", parameters[count].c_str(), _value);
+                                var_map[var_str_map[parameters[count]]] = _value;
+                                // if (itr.value == 0) { itr.value = evaluate(&itr); }
+                                // if (temp->middle->left != NULL) printf("Left: %d\n", temp->middle->left->value);
+                                // if (temp->middle->middle != NULL) printf("Middle: %d\n", temp->middle->middle->value);
+                                // if (temp->middle->right != NULL) printf("Right: %d\n", temp->middle->right->value);
+                                // printf("%d\n", evaluate(temp->middle->middle));
                                 count++;
                             }
                         }
                     }
-                    printf("Breakpoint 1");
                     int c = evaluate(localcopy.nodes);
-                    printf("Breakpoint 2");
                     var_map = var_map_copy;
                     // var_int_map = var_int_map_copy;
                     // var_str_map = var_str_map_copy;
@@ -219,32 +226,59 @@
     }
     struct node* ConvertValueVectorToNode(struct ValueVector* Vector) {
         struct node* head = NULL;
-        for (auto itr : Vector->values) {
-            printf(">>> %d\n", itr.value);
-            if (head == NULL) {
-                struct node* temp = (struct node*)malloc(sizeof(struct node));
-                temp->op = (char*)malloc(sizeof(char));
-                temp->left = NULL;
-                temp->middle = makeOperatorNodeAdvanced(*(itr.op), itr.left, itr.middle, itr.right); // *(itr.op) is the issue here.
-                printf("$$$ %d %c %d %d\n", 0, evaluate(itr.left), *(itr.op), evaluate(itr.middle), evaluate(itr.right));
-                temp->right = NULL;
-                temp->id = NULL;
-                *(temp->op) = 'v';
-                head = temp;
-                // IDEA! Use `head->value` for a default value.
+        // for (auto & itr : Vector->values) {
+        for(std::vector<struct node>::iterator it = Vector->values.begin(); it != Vector->values.end(); ++it) {
+            struct node itr = *it;
+            // printf(">>> %d\n", itr.value);
+            if (itr.op == NULL) {
+                if (head == NULL) {
+                    struct node* temp = (struct node*)malloc(sizeof(struct node));
+                    temp->op = (char*)malloc(sizeof(char) * 2);
+                    temp->left = NULL;
+                    temp->middle = makeLeafNode(itr.value);
+                    temp->right = NULL;
+                    temp->id = NULL;
+                    strcpy(temp->op, "v"); // *(temp->op) = 'v';    
+                    head = temp;
+                    // IDEA! Use `head->value` for a default value.
+                } else {
+                    struct node* temp = (struct node*)malloc(sizeof(struct node));
+                    temp->op = (char*)malloc(sizeof(char) * 2);
+                    temp->left = head;
+                    temp->middle = makeLeafNode(itr.value);
+                    temp->right = NULL;
+                    temp->id = NULL;
+                    strcpy(temp->op, "v"); // *(temp->op) = 'v';    
+                    head->right = temp;
+                    head = temp;
+                }
             } else {
-                printf("$$$ %d\n", 0);
-                struct node* temp = (struct node*)malloc(sizeof(struct node));
-                temp->op = (char*)malloc(sizeof(char));
-                temp->left = head;
-                temp->middle = makeOperatorNodeAdvanced(*(itr.op), itr.left, itr.middle, itr.right);
-                temp->right = NULL;
-                temp->id = NULL;
-                *(temp->op) = 'v';
-                head->right = temp;
-                head = temp;
+                if (itr.value == 0) {
+                    // Evaluate itr and sets its value to the result.
+                    itr.value = evaluate(&itr);
+                }
+                if (head == NULL) {
+                    struct node* temp = (struct node*)malloc(sizeof(struct node));
+                    temp->op = (char*)malloc(sizeof(char) * 2);
+                    temp->left = NULL;
+                    temp->middle = makeOperatorNodeAdvanced(*(itr.op), itr.left, itr.middle, itr.right); // *(itr.op) is the issue here.
+                    temp->right = NULL;
+                    temp->id = NULL;
+                    strcpy(temp->op, "v"); // *(temp->op) = 'v';    
+                    head = temp;
+                    // IDEA! Use `head->value` for a default value.
+                } else {
+                    struct node* temp = (struct node*)malloc(sizeof(struct node));
+                    temp->op = (char*)malloc(sizeof(char) * 2);
+                    temp->left = head;
+                    temp->middle = makeOperatorNodeAdvanced(*(itr.op), itr.left, itr.middle, itr.right);
+                    temp->right = NULL;
+                    temp->id = NULL;
+                    strcpy(temp->op, "v"); // *(temp->op) = 'v';    
+                    head->right = temp;
+                    head = temp;
+                }
             }
-            printf("||| %d\n", head->middle->value);
         };
         // for (struct node* temp = head; temp != NULL; temp = temp->left) {
         //     printf("%d\n", temp->middle->value);
@@ -262,25 +296,27 @@
     }
     struct node* ConvertParameterVectorToNode(struct ParameterVector* Vector) {
         struct node* head = NULL;
-        for (auto itr : Vector->nodes) {
+        // for (auto itr : Vector->nodes) {
+        for(std::vector<struct node>::iterator it = Vector->nodes.begin(); it != Vector->nodes.end(); ++it) {
+            const struct node itr = *it;
             if (head == NULL) {
                 struct node* temp = (struct node*)malloc(sizeof(struct node));
-                temp->op = (char*)malloc(sizeof(char));
+                temp->op = (char*)malloc(sizeof(char) * 2); // This might be a problem.
                 temp->left = NULL;
                 temp->middle = makeLeafNodeIdentifier(itr.id);
                 temp->right = NULL;
                 temp->id = NULL;
-                *(temp->op) = 'p';
+                strcpy(temp->op, "p"); // *(temp->op) = 'p';
                 head = temp;
                 // IDEA! Use `head->value` for a default value.
             } else {
                 struct node* temp = (struct node*)malloc(sizeof(struct node));
-                temp->op = (char*)malloc(sizeof(char));
+                temp->op = (char*)malloc(sizeof(char) * 2); // This might be a problem.
                 temp->left = head;
                 temp->middle = makeLeafNodeIdentifier(itr.id);
                 temp->right = NULL;
                 temp->id = NULL;
-                *(temp->op) = 'p';
+                strcpy(temp->op, "p"); // *(temp->op) = 'p';
                 head->right = temp;
                 head = temp;
             }
