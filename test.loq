@@ -1,15 +1,28 @@
+// Numeric-Recurring Waterfall
 _a(x) = x;
-_b(x, y) = x + y;
-_c(x, y, z) = x + y + z;
-_d(x, y, z, a) = x + y + z + a;
-_e(x, y, z, a, b) = x + y + z + a + b;
-_f(x, y, z, a, b, c) = x + y + z + a + b + c;
-_g(x, y, z, a, b, c, h) = x + y + z + a + b + c + h;
-_h(x, y, z, a, b, c, h, i) = x + y + z + a + b + c + h + i;
-_i(x, y, z, a, b, c, h, i, k) = x + y + z + a + b + c + h + i + k;
+_b(x, y) = _a(x) + y;
+_c(x, y, z) = _b(x, y) + z;
+_d(x, y, z, a) = _c(x, y, z) + a;
+_e(x, y, z, a, b) = _d(x, y, z, a) + b;
+_f(x, y, z, a, b, c) = _e(x, y, z, a, b) + c;
+_g(x, y, z, a, b, c, h) = _f(x, y, z, a, b, c) + h;
+_h(x, y, z, a, b, c, h, i) = _g(x, y, z, a, b, c, h) + i;
+_i(x, y, z, a, b, c, h, i, j) = _h(x, y, z, a, b, c, h, i) + j;
+_j(x, y, z, a, b, c, h, i, j, k) = _i(x, y, z, a, b, c, h, i, j) + k;
+_k(x, y, z, a, b, c, h, i, j, k, l) = _j(x, y, z, a, b, c, h, i, j, k) + l;
 
-// print f();
-print _a(5);
-print _b(10, 8);
-print _c(10, 9, 3);
-print _d(10, 9, 3, 2);
+print _a(10);
+print _b(10, 9);
+print _c(10, 9, 8);
+print _d(10, 9, 8, 7);
+print _e(10, 9, 8, 7, 6);
+print _f(10, 9, 8, 7, 6, 5);
+print _g(10, 9, 8, 7, 6, 5, 4);
+print _h(10, 9, 8, 7, 6, 5, 4, 3);
+print _i(10, 9, 8, 7, 6, 5, 4, 3, 2);
+print _j(10, 9, 8, 7, 6, 5, 4, 3, 2, 1);
+print _k(10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+
+// print gcd(8, 3); // 1
+// print gcd(4, 2); // 2
+// print gcd(24, 6); // 6

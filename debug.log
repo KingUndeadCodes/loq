@@ -1,1 +1,0 @@
-g++ -g -O3 lex.yy.c y.tab.c -ferror-limit=100
