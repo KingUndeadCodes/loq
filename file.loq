@@ -1,0 +1,20 @@
+// import "std.loq"
+
+// Functions
+myFunction(x, y) = (x < 100) ? (y < 100) ? myFunction(y + 10, x + 10) : x : y; 
+fibbanoci(x) = (x == 0) ? 0 : (x <= 2) ? 1 : fibbanoci(x - 1) + fibbanoci(x - 2);
+factorial(x) = (x == 0) ? 1 : (x) * factorial(x - 1);
+
+// Invocation of fibbanoci
+print fibbanoci(1);
+print fibbanoci(2);
+print fibbanoci(4);
+print fibbanoci(8);
+print fibbanoci(16);
+print fibbanoci(32);
+
+// Invocation of factorial
+// print factorial(10);
+
+// Invocation of myFunction
+// print myFunction(-5, 4);
