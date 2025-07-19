@@ -12,7 +12,7 @@ test: run
 
 # Without -O3, It will be very slow.
 build: lex.yy.c y.tab.c
-	g++ -g -O3 lex.yy.c y.tab.c -ferror-limit=100
+	g++ -g -O3 loqlib.c lex.yy.c y.tab.c -ferror-limit=100
 
 lex.yy.c: y.tab.c lexer.l
 	lex lexer.l

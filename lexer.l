@@ -1,5 +1,6 @@
 %{
 #include "y.tab.h"
+#include "loqlib.h"
 int yylex();
 int line_number = 1;
 // G [α-ωΑ-Ω_][α-ωΑ-Ω0-9_]*
@@ -17,6 +18,7 @@ S \"(\\.|[^"\\])*\"
 %%
 "//".*                              ; // C Comment "// Comment"
 "/*"[^*]*"*"("*"|[^*/][^*]*"*")*"/" ; // C Comment "/* Comment */"
+"input"    return input;
 "print"    return print;
 "=="       return EQU;
 "!="       return NEQ;
@@ -48,6 +50,7 @@ S \"(\\.|[^"\\])*\"
 [ \t\n]    ;
 {I}        { yylval.id = strdup(yytext); return Identifier; }
 {D}        { yylval.num = atoi(yytext); return Number; }
+{S}        { yylval.str = unescape_string(yytext); return CharacterSequence; }
 .          { ECHO; fprintf(stderr, "[\033[1;37mLexer\033[0m] \033[1;31mError\033[0m: unexpected character: \"%c\"\n", yytext[0]); exit(1); } // Create a llwarn function.
 %%
 

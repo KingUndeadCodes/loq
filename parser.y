@@ -11,6 +11,8 @@
     #include <stdint.h>
     #include <string.h>
     #include <stdio.h>
+    #include <stack>
+    #include "loqlib.h"
     extern int yylineno;
     extern char *yytext;
     extern FILE *yyin;
@@ -24,7 +26,23 @@
     void yynote(const char *msg) { fprintf(stderr, "[\033[1;37mParser\033[0m] \033[1;33mNote\033[0m <line: %d>: %s\n", yylineno, msg); }
     // int function_depth = 0;
     // int max_function_depth = 0;
+    enum node_value_type {
+        /* NODE_VALUE_TYPE_INT = 0, */
+        NODE_VALUE_TYPE_FLOAT = 0, // unused
+        NODE_VALUE_TYPE_STRING = 1,
+        // NODE_VALUE_TYPE_ARRAY = 2, // unused
+    };
+    struct value_box {
+        enum node_value_type type;
+        union {
+            float value_float;  // Used for floating point numbers (unused)
+            char* value_string; // Used for string values
+            // void* array;     // Used for arrays (unused)
+        };
+        bool claimed;
+    };
     struct node {
+        bool reference;
         int32_t value;
         char* id;
         char* op; 
@@ -36,12 +54,15 @@
         std::vector<std::string> parameters;
         struct node* nodes;
     };
+    int stack_id = 0;
     /* static std::map<int, std::vector<std::string> > func_map; */
     static std::map<int, int> var_map;
     static std::unordered_map<int, bool> is_func_map;
     static std::unordered_map<int, std::string> var_int_map; // Just to hold the name
     static std::unordered_map<std::string, int> var_str_map; // Reverse of `var_int_map`
     static std::unordered_map<int, struct function> var_func_map;
+    static std::unordered_map<int, struct value_box> values_stack;
+    static std::stack<int> stack_id_available;
     struct node* makeOperatorNodeAdvanced(char c, struct node *l, struct node *m, struct node *r) {
         struct node *temp;
         temp = (struct node*)malloc(sizeof(struct node));
@@ -75,6 +96,61 @@
         temp->id = NULL;
         return temp;
     };
+    struct node* makeLeafNode(const char* str) {
+        struct node* temp;
+        struct value_box value = {
+            .type = NODE_VALUE_TYPE_STRING,
+            .value_string = NULL,
+            .claimed = false,
+        };
+        value.value_string = (char*)malloc(strlen(str) * sizeof(char));
+        strcpy(value.value_string, str);
+        values_stack[stack_id] = value;
+        temp = (struct node*)malloc(sizeof(struct node));
+        temp->op = NULL;
+        temp->reference = true;
+        temp->value = stack_id++;
+        temp->left = NULL;
+        temp->middle = NULL;
+        temp->right = NULL;
+        temp->id = NULL;
+        return temp;
+    };
+    void freeNode(struct node* n) {
+        if (n != NULL) return;
+        if (n->reference == true) {
+            if (values_stack[stack_id].claimed == false) {
+                if (values_stack[stack_id].type == NODE_VALUE_TYPE_STRING) {
+                    free(values_stack[stack_id].value_string);
+                }
+            } 
+        }
+        if (n->op != NULL) free(n->op);
+        if (n->left != NULL) freeNode(n->left);
+        if (n->middle != NULL) freeNode(n->middle);
+        if (n->right != NULL) freeNode(n->right);
+        free(n);
+    }
+    uint8_t isReferenceNode(struct node* l, struct node* m, struct node* r) {
+        // This function returns a 3 bit value.
+        // If the most significant bit is set, then the left node is a reference node.
+        // If the second most significant bit is set, then the middle node is a reference node.
+        // If the least significant bit is set, then the right node is a reference node.
+        uint8_t result = 0;
+        if (l != NULL && l->reference == true) result |= 0b100;
+        if (m != NULL && m->reference == true) result |= 0b010;
+        if (r != NULL && r->reference == true) result |= 0b001;
+        return result;
+    };
+    int fetchNextAvailableStackID() {
+        if (stack_id_available.empty()) {
+            stack_id++;
+            return (stack_id) - 1;
+        }
+        int stack_id_dup = stack_id_available.top();
+        stack_id_available.pop();
+        return stack_id_dup;
+    };
     struct node* makeLeafNodeIdentifier(char *ident) {
         struct node *temp;
         temp = (struct node*)malloc(sizeof(struct node));
@@ -102,6 +178,50 @@
             struct node* left = t->left;
             struct node* middle = t->middle;
             struct node* right = t->right;
+            uint8_t references = isReferenceNode(left, middle, right);
+            if (references != 0) {
+                switch(*(t->op)) {
+                    case '+': {
+                        if (references == 0b101) {
+                            // Compare Types
+                            enum node_value_type typeLeft = values_stack[left->value].type;
+                            enum node_value_type typeRight = values_stack[right->value].type;
+                            if ((typeLeft == NODE_VALUE_TYPE_STRING) && (typeLeft == typeRight)) {
+                                // If left or right is unclaimed, it would be preferable to claim either one of them rather than creating a new string. 
+                                bool leftClaimed = values_stack[left->value].claimed;
+                                bool rightClaimed = values_stack[right->value].claimed;
+                                if (leftClaimed == false) {
+                                    values_stack[left->value].value_string = safe_strcat(values_stack[left->value].value_string, values_stack[right->value].value_string);
+                                    if (rightClaimed == false) stack_id_available.push(right->value);
+                                    return left->value;
+                                } else if (rightClaimed == false) {
+                                    values_stack[right->value].value_string = safe_strcat(values_stack[right->value].value_string, values_stack[left->value].value_string);
+                                    return right->value;
+                                } else {
+                                    struct value_box newValue;
+                                    newValue.type = NODE_VALUE_TYPE_STRING;
+                                    newValue.value_string = safe_strcat(values_stack[left->value].value_string, values_stack[right->value].value_string);
+                                    newValue.claimed = false;
+                                    int new_id = fetchNextAvailableStackID();
+                                    values_stack[new_id] = newValue;
+                                    return new_id; // Return the ID of the new value.
+                                } 
+                            }
+                        } else {
+                            // This error will occur when my terrible fix is removed.
+                            yyerror("Error 2");
+                        }
+                        break;
+                    }
+                    case '*': {
+                        yyerror("Manipulation of reference nodes via multiplication currently not allowed.");
+                        break;
+                    }
+                    default: {
+                        break;
+                    }
+                }
+            }
             switch (*(t->op)) {
                 // Arithmetic
                 case '+': return evaluate(left) + evaluate(right); break; // Addition
@@ -354,23 +474,42 @@
     // 2 > (1, 2]
     // =================================
     // https://stackoverflow.com/questions/6636808/repl-for-interpreter-using-flex-bison
+    char* strndup(const char* str, struct node* n) {
+        int repeat = evaluate(n);
+        if (repeat < 0) repeat = 0;
+        if (repeat == 0) {
+            const char* empty = "";
+            return (char*)empty;
+        } else {
+            size_t len = strlen(str);
+            const char* string_copy = strdup(str);
+            char *result = (char*)malloc(len * repeat + 1);
+            result[0] = '\0';
+            for (int i = 0; i < repeat; ++i) strcat(result, string_copy);
+            return result;
+        }
+    };
 %}
 
-%union { int num; char* id; struct node* node; struct ParameterVector* str_vector; struct ValueVector* value_vector; }
+%union { int num; char* id; char* str; struct node* node; struct ParameterVector* str_vector; struct ValueVector* value_vector; }
 %start line
 %token EQU
 %token NEQ
 %token LET
 %token GET
+%token <id> input
 %token <id> print
 %token <id> Identifier
 %token <num> Number
+%token <str> CharacterSequence // String
 %type <num> term
 %type <node> ident
 %type <node> assignment
 %type <node> exp
+%type <node> string
 %type <str_vector> params
 %type <value_vector> values
+// %type <value_vector> array 
 
 %left '+' '-'
 %left '*' '/' '%'
@@ -381,15 +520,40 @@
 %%
 
 line : 
-    | exp ';'                       {/* printf("[Unused] \033[0;33m%d\033[0m\n", evaluate($1)); */ ;}
-    | assignment ';'                {evaluate($1);}
-    | print exp ';'                 {printf("\033[0;33m%d\033[0m\n", evaluate($2));}
-    | line exp ';'                  {/* printf("[Unused] \033[0;33m%d\033[0m\n", evaluate($2)); */ ;}
-    | line assignment ';'           {evaluate($2);}
-    | line print exp ';'            {printf("\033[0;33m%d\033[0m\n", evaluate($3));}
+    | exp ';'                       { freeNode($1); } /* printf("[Unused] \033[0;33m%d\033[0m\n", evaluate($1)); */ 
+    | assignment ';'                { evaluate($1); freeNode($1); }
+    | print exp ';'                 { printf("\033[0;33m%d\033[0m\n", evaluate($2)); freeNode($2); }
+    | print string ';'              { printf("%s\n", values_stack[evaluate($2)].value_string); freeNode($2); }
+    | line exp ';'                  { freeNode($2); } /* printf("[Unused] \033[0;33m%d\033[0m\n", evaluate($2)); */ 
+    | line assignment ';'           { evaluate($2); freeNode($2); }
+    | line print exp ';'            { printf("\033[0;33m%d\033[0m\n", evaluate($3)); freeNode($3); }
+    | line print string ';'         { printf("%s\n", values_stack[evaluate($3)].value_string); freeNode($3); }
     ;
 
 ident: Identifier { $$ = makeLeafNodeIdentifier($1); }
+
+/*
+string: CharacterSequence  { $$ = $1; }
+    | '(' string ')'       { $$ = $2; } // Parentheses around string
+    | string '+' string    { $$ = strcat($1, $3); } // Concatenate strings
+    | string '*' exp       { $$ = strndup($1, $3); } // Repeat string
+    | exp '*' string       { $$ = strndup($3, $1); } // Repeat string
+
+// array: '[' values ']' { $$ = $2; }
+*/
+
+string: CharacterSequence { $$ = makeLeafNode($1); }
+    | '(' string ')' { $$ = $2; } // Parentheses around string
+    | string '+' string {
+        // TODO: This is a terrible fix.
+        // It creates new memory that is not freed.
+        // I hate this fix, but it works. How difficult is it to write actually half decent code?
+        if (($1->op != NULL && $3->op != NULL) == false) { 
+            if ($1->op != NULL) { $1 = makeLeafNode(values_stack[evaluate($1)].value_string); }
+            if ($3->op != NULL) { $3 = makeLeafNode(values_stack[evaluate($3)].value_string); }
+        }
+        $$ = makeOperatorNode('+', $1, $3);
+    }
 
 params : ident { 
         struct ParameterVector* String = CreateParameterVector();
@@ -437,12 +601,16 @@ exp : ident { $$ = $1; }
     | ident '(' values ')' { $$ = makeOperatorNode('c', $1, ConvertValueVectorToNode($3)); }
     | exp '?' exp ':' exp { $$ = makeOperatorNodeAdvanced('?', $1, $3, $5); }
     | '(' exp ')' { $$ = $2; }
+    | input { $$ = makeLeafNode(inputInteger(NULL)); }
+    | input string { $$ = makeLeafNode(inputInteger(values_stack[evaluate($2)].value_string)); }
     ;
 
 term : Number { $$ = $1; }
     | '-' Number { $$ = $2 * -1; }
     ;
 %%
+
+// instead of loq, what about swing? The name sounds so much better.
 
 int main(int argc, char **argv) {
     // printf("loq %s (%s, %s, %s) [%s]\n", "0.0.1", "dev", __DATE__, __TIME__, __VERSION__);
